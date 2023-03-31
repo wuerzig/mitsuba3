@@ -154,7 +154,8 @@ MI_PY_EXPORT(Shape) {
         .def_method(Shape, is_mesh)
         .def_method(Shape, parameters_grad_enabled)
         .def_method(Shape, primitive_count)
-        .def_method(Shape, effective_primitive_count);
+        .def_method(Shape, effective_primitive_count)
+        .def_method(Shape, ray_intersect_preliminary);
 
     bind_shape_generic<Shape *>(shape);
 
@@ -216,4 +217,7 @@ MI_PY_EXPORT(Shape) {
         .def("smooth_hessian", [](const SDF &sdf, Point3f p) {
                 return sdf.smooth_hessian(p);
              }, D(SDF, smooth_hessian), "p"_a);
+
+
+     MI_PY_REGISTER_OBJECT("register_sdf", SDF)
 }
