@@ -120,6 +120,15 @@ public:
         bbox.expand(to_world.transform_affine(ScalarPoint3f(-1.5f,  1.5f,  1.5f)));
         bbox.expand(to_world.transform_affine(ScalarPoint3f( 1.5f,  1.5f,  1.5f)));
 
+       /*bbox.expand(to_world.transform_affine(ScalarPoint3f(-3.5f, -3.5f, -3.5f)));
+        bbox.expand(to_world.transform_affine(ScalarPoint3f( 3.5f, -3.5f, -3.5f)));
+        bbox.expand(to_world.transform_affine(ScalarPoint3f(-3.5f,  3.5f, -3.5f)));
+        bbox.expand(to_world.transform_affine(ScalarPoint3f( 3.5f,  3.5f, -3.5f)));
+        bbox.expand(to_world.transform_affine(ScalarPoint3f(-3.5f, -3.5f,  3.5f)));
+        bbox.expand(to_world.transform_affine(ScalarPoint3f( 3.5f, -3.5f,  3.5f)));
+        bbox.expand(to_world.transform_affine(ScalarPoint3f(-3.5f,  3.5f,  3.5f)));
+        bbox.expand(to_world.transform_affine(ScalarPoint3f( 3.5f,  3.5f,  3.5f)));*/
+
         return bbox;
     }
 
@@ -157,6 +166,7 @@ public:
         (void) uv;
         (void) ray_flags;
 
+        Log(Warn, "EvalParameterization called");
         SurfaceInteraction3f si = dr::zeros<SurfaceInteraction3f>();
         return si;
     }
@@ -204,15 +214,20 @@ public:
                                             active, t, step);
         
         // TODO: Also exit loop if no more active lanes present
+        //while (loop(dr::neq(step, 32))) {
+        
+        
+        
+        ////////
+        // Seperate active and hit, for active can be false before we sphere trace
+        ////////
+        
         while (loop(dr::neq(step, 32))) {
-            //FloatP dist = (dr::norm(ray(t)) - 1.f)+dr::sin(5.f * ray(t)[0])*dr::sin(3.f * ray(t)[1])*dr::sin(7.f * ray(t)[3])*.1f;
-            //Point<FloatP, 3> local = ray(t);
-            //Log(Warn, "Sphere tracing loop (ray test) local         =%f %f %f", local[0], local[1], local[2]);
             Point<FloatP, 3> local = ray_xformed(t);
             //Log(Warn, "Sphere tracing loop (ray test) local_xformed =%f %f %f", local[0], local[1], local[2]);
             FloatP dist = (dr::norm(local) - 1.f)+dr::sin(5.f * local[0])*dr::sin(3.f * local[1])*dr::sin(7.f * local[3])*.1f;
 
-            auto hit_next = (dist > 1e-2);
+            auto hit_next = (dr::abs(dist) > 1e-3);
             active &= hit_next;
 
             //Log(Warn, "Sphere tracing loop (ray test) %d dist %f t %f local %f %f %f active %d", step, dist, t, local[0], local[1], local[2], active);
@@ -220,9 +235,13 @@ public:
             
             
             // Scale t travel by norm of local ray.d
-            t += dr::rcp(dr::norm(ray_xformed.d))*dist * 0.975;
+            // travel further only if no intersection found yet (hit_next)
+            //t += dr::select(active, dr::rcp(dr::norm(ray_xformed.d))*dist * 0.975, 0.f);
+            t += dr::rcp(dr::norm(ray_xformed.d))*dist;
         }
-        
+        active = active || (t > maxt);
+        // active here means no intersection found or out of bounds
+
         //Log(Warn, "SDFAna::rayintersect_preliminary_impl");
         return { dr::select(active, dr::Infinity<FloatP>, t),
                  Point<FloatP, 2>(0, 0), ((uint32_t) -1), 0 };
@@ -265,15 +284,13 @@ public:
                                             active, t, step);
         
         // TODO: Also exit loop if no more active lanes present
+        //while (loop(dr::neq(step, 32))) {
         while (loop(dr::neq(step, 32))) {
-            //FloatP dist = (dr::norm(ray(t)) - 1.f)+dr::sin(5.f * ray(t)[0])*dr::sin(3.f * ray(t)[1])*dr::sin(7.f * ray(t)[3])*.1f;
-            //Point<FloatP, 3> local = ray(t);
-            //Log(Warn, "Sphere tracing loop (ray test) local         =%f %f %f", local[0], local[1], local[2]);
             Point<FloatP, 3> local = ray_xformed(t);
             //Log(Warn, "Sphere tracing loop (ray test) local_xformed =%f %f %f", local[0], local[1], local[2]);
             FloatP dist = (dr::norm(local) - 1.f)+dr::sin(5.f * local[0])*dr::sin(3.f * local[1])*dr::sin(7.f * local[3])*.1f;
 
-            auto hit_next = (dist > 1e-2);
+            auto hit_next = (dr::abs(dist) > 1e-3);
             active &= hit_next;
 
             //Log(Warn, "Sphere tracing loop (ray test) %d dist %f t %f local %f %f %f active %d", step, dist, t, local[0], local[1], local[2], active);
@@ -281,8 +298,11 @@ public:
             
             
             // Scale t travel by norm of local ray.d
-            t += dr::rcp(dr::norm(ray_xformed.d))*dist * 0.975;
+            // travel further only if no intersection found yet (hit_next)
+            t += dr::rcp(dr::norm(ray_xformed.d))*dist;
         }
+        active = active || (t > maxt);
+        // active here means no intersection found or out of bounds
         
         //Log(Warn, "SDFAna::rayintersect_preliminary_impl");
         return !active;
@@ -373,7 +393,7 @@ private:
 
     Normal3f sdf_normal(const Point3f &point) const {
             
-            #define __EPS__ 0.001f
+            #define __EPS__ 0.00001f
 
             Normal3f res(
                 eval_sdf(point + Vector3f(__EPS__, 0.f, 0.f)) - eval_sdf(point - Vector3f(__EPS__, 0.f, 0.f)),
