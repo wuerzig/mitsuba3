@@ -190,9 +190,6 @@ public:
                                          dr::float64_array_t<FloatP>>;
         using ScalarValue = dr::scalar_t<Value>;
 
-        Value radius(1.0); // Constant kept for readability
-        Value length(1.0);
-
         Transform<Point<FloatP, 4>> to_object;
         if constexpr (!dr::is_jit_v<FloatP>)
             to_object = m_to_object.scalar();
@@ -201,49 +198,25 @@ public:
 
         Ray3fP ray_xformed = to_object.transform_affine(ray_);
 
-        //Log(Warn, "Orig.    ray o %f %f %f d %f %f %f", ray.o[0], ray.o[1], ray.o[2], ray.d[0], ray.d[1], ray.d[2]);
-        //Log(Warn, "xformed  ray o %f %f %f d %f %f %f", ray_xformed.o[0], ray_xformed.o[1], ray_xformed.o[2], ray_xformed.d[0], ray_xformed.d[1], ray_xformed.d[2]);
-        //Point<FloatP, 3> local = ray(t);
-
         Value maxt = Value(ray_xformed.maxt);
 
         FloatP t = 0;
+        FloatP dist = dr::Infinity<FloatP>;
         UInt32 step = 0;
 
         dr::Loop<Mask> loop("SDFana sphere tracing loop", 
                                             active, t, step);
-        
-        // TODO: Also exit loop if no more active lanes present
-        //while (loop(dr::neq(step, 32))) {
-        
-        
-        
-        ////////
-        // Seperate active and hit, for active can be false before we sphere trace
-        ////////
-        
-        while (loop(dr::neq(step, 32))) {
+        while (loop(dr::neq(step, 64))) {
             Point<FloatP, 3> local = ray_xformed(t);
-            //Log(Warn, "Sphere tracing loop (ray test) local_xformed =%f %f %f", local[0], local[1], local[2]);
-            FloatP dist = (dr::norm(local) - 1.f)+dr::sin(5.f * local[0])*dr::sin(3.f * local[1])*dr::sin(7.f * local[3])*.1f;
-
-            auto hit_next = (dr::abs(dist) > 1e-3);
-            active &= hit_next;
-
-            //Log(Warn, "Sphere tracing loop (ray test) %d dist %f t %f local %f %f %f active %d", step, dist, t, local[0], local[1], local[2], active);
+            dist = (dr::norm(local) - 1.f)+dr::sin(5.f * local[0])*dr::sin(3.f * local[1])*dr::sin(7.f * local[3])*.1f;
             step += 1;
-            
-            
             // Scale t travel by norm of local ray.d
-            // travel further only if no intersection found yet (hit_next)
-            //t += dr::select(active, dr::rcp(dr::norm(ray_xformed.d))*dist * 0.975, 0.f);
             t += dr::rcp(dr::norm(ray_xformed.d))*dist;
         }
-        active = active || (t > maxt);
-        // active here means no intersection found or out of bounds
-
-        //Log(Warn, "SDFAna::rayintersect_preliminary_impl");
-        return { dr::select(active, dr::Infinity<FloatP>, t),
+        
+        
+        active &= (dr::abs(dist) < 5e-5) && (t < maxt);
+        return { dr::select(active, t, dr::Infinity<FloatP>),
                  Point<FloatP, 2>(0, 0), ((uint32_t) -1), 0 };
     }
 
@@ -252,16 +225,12 @@ public:
                                      dr::mask_t<FloatP> active) const {
         // TODO: Figure out how to do this without code duplication
 
-
         MI_MASK_ARGUMENT(active);
 
         using Value = std::conditional_t<dr::is_cuda_v<FloatP> || dr::is_diff_v<Float>,
                                          dr::float32_array_t<FloatP>,
                                          dr::float64_array_t<FloatP>>;
         using ScalarValue = dr::scalar_t<Value>;
-
-        Value radius(1.0); // Constant kept for readability
-        Value length(1.0);
 
         Transform<Point<FloatP, 4>> to_object;
         if constexpr (!dr::is_jit_v<FloatP>)
@@ -271,41 +240,28 @@ public:
 
         Ray3fP ray_xformed = to_object.transform_affine(ray_);
 
-        //Log(Warn, "Orig.    ray o %f %f %f d %f %f %f", ray.o[0], ray.o[1], ray.o[2], ray.d[0], ray.d[1], ray.d[2]);
-        //Log(Warn, "xformed  ray o %f %f %f d %f %f %f", ray_xformed.o[0], ray_xformed.o[1], ray_xformed.o[2], ray_xformed.d[0], ray_xformed.d[1], ray_xformed.d[2]);
-        //Point<FloatP, 3> local = ray(t);
-
         Value maxt = Value(ray_xformed.maxt);
 
         FloatP t = 0;
+        FloatP dist = dr::Infinity<FloatP>;
         UInt32 step = 0;
 
         dr::Loop<Mask> loop("SDFana sphere tracing loop", 
                                             active, t, step);
         
-        // TODO: Also exit loop if no more active lanes present
-        //while (loop(dr::neq(step, 32))) {
-        while (loop(dr::neq(step, 32))) {
+        while (loop(dr::neq(step, 64))) {
             Point<FloatP, 3> local = ray_xformed(t);
-            //Log(Warn, "Sphere tracing loop (ray test) local_xformed =%f %f %f", local[0], local[1], local[2]);
-            FloatP dist = (dr::norm(local) - 1.f)+dr::sin(5.f * local[0])*dr::sin(3.f * local[1])*dr::sin(7.f * local[3])*.1f;
-
-            auto hit_next = (dr::abs(dist) > 1e-3);
-            active &= hit_next;
-
-            //Log(Warn, "Sphere tracing loop (ray test) %d dist %f t %f local %f %f %f active %d", step, dist, t, local[0], local[1], local[2], active);
+            dist = (dr::norm(local) - 1.f)+dr::sin(5.f * local[0])*dr::sin(3.f * local[1])*dr::sin(7.f * local[3])*.1f;
             step += 1;
-            
-            
             // Scale t travel by norm of local ray.d
-            // travel further only if no intersection found yet (hit_next)
             t += dr::rcp(dr::norm(ray_xformed.d))*dist;
         }
-        active = active || (t > maxt);
-        // active here means no intersection found or out of bounds
+        
+        
+        active &= (dr::abs(dist) < 5e-5) && (t < maxt);
         
         //Log(Warn, "SDFAna::rayintersect_preliminary_impl");
-        return !active;
+        return active;
     }
 
     MI_SHAPE_DEFINE_RAY_INTERSECT_METHODS()
